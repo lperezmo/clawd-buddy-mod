@@ -162,8 +162,9 @@ a new PowerShell window in the same folder, started with `claude`. Clawd splits 
 while it happens. Three is the most; `/multiply 30` opens three. It is only offered on
 Windows.
 
-Turn on the `multiplyRemoteControl` option (`/plugin`, then the mod's options) to start each
-clone with `claude --remote-control` instead, so you can reach it from claude.ai or your phone.
+Turn on the `multiplyRemoteControl` option to start each clone with
+`claude --remote-control` instead, so you can reach it from claude.ai or your phone. Set it
+with `/plugin configure clawd-buddy@clawd-buddy-mod` and restart Claude Code.
 
 Each clone hops in saying which clone it is. It learns its number from `CLAWD_CLONE`, which
 its window sets for it.
@@ -176,7 +177,7 @@ its window sets for it.
 - **`/clawd <mood>`** does the same (`celebrate`, `lock in`, `chill`); **`/clawd <ride>`**
   sends him on one (walk, skate, scooter, bike, car, kite, space, pool), and **`/clawd <act>`**
   plays an act by name (`/clawd dancing`, `/clawd coffee`). `/clawd` alone makes him hop.
-- **`/clawd context`** (or `/clawd c`, quick to type on the phone, or `/clawd status`) reads the figures again and answers with the band's figures as plain text:
+- **`/clawd context`** (or `/clawd c`, quick to type from a phone over remote control, or `/clawd status`) reads the figures again and answers with the band's figures as plain text:
   the context by category, growth and headroom, the cache countdown, the 5h and week
   limits, and the auto-compact setting. Handy on the phone, where remote control shows a
   command's answer but not the band.
@@ -224,13 +225,13 @@ there, so he stays in view when a press scrolls the band, and walks its whole wi
 
 ## Credits
 
-Clawd and his sprites are Anthropic's, from [claude.dev](https://claude.dev). This is an
-unofficial fan mod; Anthropic did not make it and does not support it.
+Clawd and his sprites are Anthropic's, from [claude.dev](https://claude.dev).
 `bun tools/extract-sprites.ts` rebuilds them from the site (its pixel sheets and its Lottie acts) and
 `bun tools/render-preview.ts` redraws the GIF above. The forecast follows Anthropic's
 [token-weather](https://github.com/anthropics/claude-code-playground) mod (Apache-2.0), and
 the context view is modeled on
 [context-lens](https://github.com/Arunjay4213/claude-mods/tree/main/plugins/context-lens).
+This is an unofficial fan mod; Anthropic did not make it and does not support it.
 
 ## License
 
