@@ -1,0 +1,9 @@
+# Claude Code writes the type declarations for the running build here each
+# time it loads the mod. They are Anthropic's and the MCP ones list this
+# machine's tools, so they stay out of the repo.
+.claude-plugin/types/
+plugins/clawd-buddy/.claude-plugin/types/
+plugins/clawd-buddy/tsconfig.json
+.claude/settings.local.json
+node_modules/
+tools/.cache/

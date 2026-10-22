@@ -1,0 +1,26 @@
+{
+  "name": "clawd-buddy",
+  "version": "1.0.0",
+  "description": "Clawd lives above your prompt: he locks in while Claude works, chills when it goes quiet, celebrates a long turn and hops when you talk to him. Under him, a context forecast and what is left of your 5-hour and weekly limits, a prompt cache countdown, a live context view and compaction controls, in the band or a sidebar. In the terminal and the desktop app. An unofficial fan mod, not made or endorsed by Anthropic.",
+  "author": {
+    "name": "Luis Perez Morales",
+    "url": "https://github.com/lperezmo"
+  },
+  "repository": "https://github.com/lperezmo/clawd-buddy-mod",
+  "userConfig": {
+    "desktopSize": {
+      "type": "string",
+      "title": "Clawd's size in the desktop app",
+      "description": "CSS pixels for each of his sprite pixels. Whole numbers draw sharpest. The terminal draws him in half blocks either way.",
+      "default": "3",
+      "options": ["2", "2.5", "3", "3.5", "4"]
+    },
+    "multiplyRemoteControl": {
+      "type": "boolean",
+      "title": "Start /multiply clones with remote control",
+      "description": "Windows only. On: each clone /multiply opens runs `claude --remote-control`, so you can reach it from claude.ai or your phone. Off: plain `claude`.",
+      "default": false
+    }
+  },
+  "keywords": ["clawd", "mascot", "mod", "animation", "usage"]
+}

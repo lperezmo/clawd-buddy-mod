@@ -1,0 +1,20 @@
+clawd-buddy
+Copyright (c) 2026 Luis Perez Morales
+
+Clawd
+  Clawd, his name and his sprites (hooks/sprites.ts, docs/clawd.gif) are
+  Anthropic's, taken from https://claude.dev. They are not covered by this
+  repository's license. tools/extract-sprites.ts rebuilds them from the site.
+
+token-weather
+  hooks/weather.ts follows token-weather by Anthropic (Claude Code DevRel),
+  from https://github.com/anthropics/claude-code-playground
+  (claude-code/mods/token-weather), licensed under the Apache License 2.0;
+  a copy is in LICENSE-APACHE. The forecast bands, icons and turn chart come
+  from it. Changed here: folded into the line under Clawd, with the 5-hour and
+  weekly usage limits added. The upstream project ships no NOTICE file.
+
+context-lens
+  The context view in hooks/lens.ts is modeled on context-lens by Arunjay4213,
+  https://github.com/Arunjay4213/claude-mods/tree/main/plugins/context-lens.
+  Its row layout is followed.

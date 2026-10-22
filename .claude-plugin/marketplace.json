@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "clawd-buddy-mod",
+  "owner": {
+    "name": "Luis Perez Morales",
+    "url": "https://github.com/lperezmo"
+  },
+  "metadata": {
+    "description": "clawd-buddy-mod: an unofficial Claude Code mod that puts an animated Clawd above your prompt."
+  },
+  "plugins": [
+    {
+      "name": "clawd-buddy",
+      "source": "./plugins/clawd-buddy",
+      "description": "Clawd strolls while Claude works, skates for shell commands, drives off with subagents, flies a kite for web fetches and hops when you talk to him. Under him: a context forecast and your 5-hour and weekly limits. In the terminal and the desktop app.",
+      "category": "fun"
+    }
+  ]
+}
