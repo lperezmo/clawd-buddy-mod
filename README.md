@@ -11,7 +11,7 @@ window, counts down to the prompt cache going cold and shows what is left of
 your 5-hour and weekly limits, and a context bar opens into a live `/context`
 breakdown. One click moves all of it to a sidebar.
 
-![Clawd hopping, at his laptop, skating, flying a kite, dancing in confetti and napping](docs/clawd.gif)
+![Clawd above the prompt in Claude Code, with the sidebar open showing usage limits, prompt cache and the context breakdown](docs/demo.gif)
 
 Runs in the terminal and in the desktop app's Code tab. Needs Claude Code 2.1.289 or later.
 
@@ -227,7 +227,7 @@ there, so he stays in view when a press scrolls the band, and walks its whole wi
 
 Clawd and his sprites are Anthropic's, from [claude.dev](https://claude.dev).
 `bun tools/extract-sprites.ts` rebuilds them from the site (its pixel sheets and its Lottie acts) and
-`bun tools/render-preview.ts` redraws the GIF above. The forecast follows Anthropic's
+`bun tools/render-preview.ts` redraws the sprite preview in `docs/clawd.gif`. The forecast follows Anthropic's
 [token-weather](https://github.com/anthropics/claude-code-playground) mod (Apache-2.0), and
 the context view is modeled on
 [context-lens](https://github.com/Arunjay4213/claude-mods/tree/main/plugins/context-lens).
