@@ -1,8 +1,3 @@
-This license covers the code in this repository. It does not cover Clawd or
-his sprites (hooks/sprites.ts and docs/clawd.gif), which are Anthropic's, nor
-the parts of hooks/weather.ts that come from token-weather, which stay under
-the Apache License 2.0. See NOTICE.
-
 MIT License
 
 Copyright (c) 2026 Luis Perez Morales

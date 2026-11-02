@@ -235,6 +235,8 @@ This is an unofficial fan mod; Anthropic did not make it and does not support it
 
 ## License
 
-The code is MIT, see [LICENSE](plugins/clawd-buddy/LICENSE). Clawd's sprites are not
+The code is MIT, see [LICENSE](LICENSE). Clawd's sprites are not
 covered by it, and the token-weather parts stay Apache-2.0; [NOTICE](plugins/clawd-buddy/NOTICE)
 has the details.
+
+Issues and pull requests are welcome; see [CONTRIBUTING](CONTRIBUTING.md).

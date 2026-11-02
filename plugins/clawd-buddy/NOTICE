@@ -1,6 +1,10 @@
 clawd-buddy
 Copyright (c) 2026 Luis Perez Morales
 
+The MIT License in LICENSE covers the code in this repository. It does not
+cover Clawd or his sprites, nor the parts of hooks/weather.ts that come from
+token-weather, which stay under the Apache License 2.0. Details below.
+
 Clawd
   Clawd, his name and his sprites (hooks/sprites.ts, docs/clawd.gif) are
   Anthropic's, taken from https://claude.dev. They are not covered by this
