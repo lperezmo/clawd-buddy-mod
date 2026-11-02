@@ -20,6 +20,12 @@ whether it happens in the terminal or the desktop app.
    bun lint --max-warnings 0
    ```
 
+   And the tests, which run inside Claude Code rather than plain `bun test`:
+
+   ```
+   claude plugin test plugins/clawd-buddy
+   ```
+
 4. Keep PRs small and say what you checked by hand.
 
 Don't edit `hooks/sprites.ts` by hand; `bun tools/extract-sprites.ts` generates it.
