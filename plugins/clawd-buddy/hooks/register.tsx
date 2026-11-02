@@ -438,13 +438,16 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  // Clawd only watches prompts, tool calls, compaction and the sidebar closing; he never
+  // judges them. So if one of his hooks fails, its .catch lets the event go on as if he
+  // were not there (next(e) replays what a call already settled to, so nothing runs twice).
   on('session.compact', async ($, e, next) => {
     const done = await next(e)
     if (e.agentId === undefined && e.trigger !== 'precompute') {
       isRewritten = true
     }
     return done
-  })
+  }).catch(($, e, next) => next(e))
 
   // The person closed the sidebar with its close mark: the lines come back.
   on('ui.close', async ($, e, next) => {
@@ -458,7 +461,7 @@ export const register: Register = (on, options) => {
       $.ui.invalidate('ui.render')
     }
     return closed
-  })
+  }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: SIDEBAR_ID }, ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
@@ -608,7 +611,7 @@ export const register: Register = (on, options) => {
     // a plain keyword, never a reading of the prompt: thanks gets the happy hop
     clawd.prompt(isThanks(e.text))
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   on('turn.start', ($, e, next) => {
     clawd.turnStart()
@@ -639,7 +642,7 @@ export const register: Register = (on, options) => {
       }
     }
     return ran
-  })
+  }).catch(($, e, next) => next(e))
 
   on('turn.complete', ($, e, next) => {
     // a commit or a checkout in the turn changes the marks
