@@ -1,0 +1,44 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Weekly, so a new Claude Code release that breaks Clawd shows up on its own.
+  schedule:
+    - cron: '0 14 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  mod:
+    name: mod (Claude Code ${{ matrix.claude }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        # 2.1.289 is the oldest release the mod supports (see README).
+        claude: ['2.1.289', 'latest']
+        include:
+          # /multiply only runs on Windows.
+          - os: windows-latest
+            claude: latest
+    env:
+      DISABLE_AUTOUPDATER: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code ${{ matrix.claude }}
+        run: npm install -g @anthropic-ai/claude-code@${{ matrix.claude }}
+      - run: claude --version
+      - name: Validate manifests
+        run: |
+          claude plugin validate plugins/clawd-buddy/.claude-plugin/plugin.json
+          claude plugin validate .claude-plugin/marketplace.json
+      - name: Plugin tests
+        run: claude plugin test plugins/clawd-buddy

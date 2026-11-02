@@ -13,7 +13,8 @@
       "name": "clawd-buddy",
       "source": "./plugins/clawd-buddy",
       "description": "Clawd strolls while Claude works, skates for shell commands, drives off with subagents, flies a kite for web fetches and hops when you talk to him. Under him: a context forecast and your 5-hour and weekly limits. In the terminal and the desktop app.",
-      "category": "fun"
+      "category": "fun",
+      "license": "MIT"
     }
   ]
 }

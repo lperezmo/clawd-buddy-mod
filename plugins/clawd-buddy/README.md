@@ -30,6 +30,26 @@ tab. Needs Claude Code 2.1.289 or later.
 - **Files:** opens the files Claude touches in your editor, at the changed line.
 - **`/clawd`** commands, and **`/multiply`** on Windows to open more sessions.
 
+## Usage
+
+Clawd shows up above your prompt on his own once the plugin is enabled. Some
+things to try:
+
+```
+/clawd                 he hops
+/clawd celebrate       plays one of his celebrations
+/clawd skate           sends him on a ride (walk, skate, car, kite, pool, ...)
+/clawd coffee          plays an act by name
+/clawd context         the dashboard's figures as plain text, handy on a phone
+/clawd sidebar         moves the lines into a pane beside the conversation
+/clawd hide            tucks Clawd away and keeps the lines
+/clawd editor zed      opens files in Zed instead of VS Code
+/multiply 2            Windows: opens two more Claude sessions in this folder
+```
+
+With the band focused (`ctrl+x tab`), single keys work too: `x` opens the context
+view, `d` the sidebar, `m` twice compacts, `z` opens the file Claude changed last.
+
 ## Privacy
 
 It reads session figures, tool names and file paths, never your prompts beyond
