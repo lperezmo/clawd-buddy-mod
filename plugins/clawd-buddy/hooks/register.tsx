@@ -10,7 +10,7 @@ import { cloneNumber, count as cloneCount, MAX as CLONE_MAX, windowArgv } from '
 import type { Mood } from './moods'
 import { report } from './report'
 import { SIDEBAR_ID, SIDEBAR_TITLE, sidebarView } from './sidebar'
-import { limitsFromHeaders, Weather } from './weather'
+import { limitsFromReply, Weather } from './weather'
 import type { Piece } from './weather'
 
 const KEY = 'clawd'
@@ -456,8 +456,8 @@ export const register: Register = (on, options) => {
     const answer = await next(e)
     if (next.origin.plugin === 'engine') {
       try {
-        const r = answer as { value?: { headers?: Record<string, string> }; headers?: Record<string, string> }
-        const limits = limitsFromHeaders((r.value ?? r).headers ?? {})
+        // only a model request's reply carries it
+        const limits = limitsFromReply(e.url, answer)
         if (limits.length) {
           weather.record(undefined, limits)
           $.ui.invalidate('ui.render')

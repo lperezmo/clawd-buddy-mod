@@ -76,12 +76,20 @@ the same ones the status line has:
 
 The limits only show on a Claude subscription; on an API key there are none to
 read. Claude Code reports the 5-hour and weekly limits itself; the Fable limit is
-read from the rate-limit headers of Claude's replies, so it shows after the first
-reply from a Fable model in the session, and only on a subscription. On a narrow
-terminal the line gives way in this order: the chart, the reset countdowns, `of ctx`
-(leaving `18% (36k/200k)`), the meters, the token counts (leaving `18% ctx`), the
-forecast word, and then the Fable limit, which takes the forecast word's place back
-so the 5-hour and weekly limits still fit.
+read from the rate-limit headers of the replies to Claude Code's own model requests.
+The figure is the one the last reply from a Fable model in the session carried:
+only those replies carry it, so it holds while you use other models. `↻ refresh`
+does not read it again, and after a plugin reload it is not on the line until the
+next Fable reply. It needs a Claude Code build that lets mods see the engine's model
+requests (seen working on 2.1.322); on a build without that, the Fable window just
+does not show.
+
+On a narrow terminal the line gives way in this order: the chart, the reset
+countdowns, `of ctx` (leaving `18% (36k/200k)`), the meters, the token counts
+(leaving `18% ctx`), the forecast word, then the word `left` after each limit but
+the last (`☀  18% ctx   5h 93%   week 77%   fable 89% left`), and last the Fable
+window (`☀  18% ctx   5h 93% left   week 77% left`), so a terminal that fits the
+5-hour and weekly limits still fits them.
 
 ## The context view
 
@@ -119,7 +127,9 @@ press it.
 `d: sidebar` (or `/clawd sidebar`) moves the lines into a pane beside the
 conversation, with room for each: the context fill and its forecast, the usage
 limits with when they reset, the prompt cache with the time it goes cold, and
-the context by category. `l: ↻ refresh` reads the limits again. Clawd keeps the band either way. Close it with
+the context by category. `l: ↻ refresh` reads the session's figures again: the
+context and the 5-hour and weekly limits, not the Fable limit, which only the
+next Fable reply brings. Clawd keeps the band either way. Close it with
 `d: close sidebar`, the pane's close mark or `ctrl+x x`, and the lines come back
 under him. It stays on across sessions; on a terminal under 144 columns it
 waits for room and the lines stay in the band.
@@ -183,7 +193,7 @@ its window sets for it.
   plays an act by name (`/clawd dancing`, `/clawd coffee`). `/clawd` alone makes him hop.
 - **`/clawd context`** (or `/clawd c`, quick to type from a phone over remote control, or `/clawd status`) reads the figures again and answers with the band's figures as plain text:
   the context by category, growth and headroom, the cache countdown, the 5h, week and
-  fable limits, and the auto-compact setting. Handy on the phone, where remote control shows a
+  fable limits (the fable one as the last Fable reply left it), and the auto-compact setting. Handy on the phone, where remote control shows a
   command's answer but not the band.
 - **Hide just Clawd:** `h: hide clawd` (or `/clawd hide`) keeps the lines and tucks him
   away; `h: show clawd` or `/clawd show` brings him back. It sticks across sessions.
