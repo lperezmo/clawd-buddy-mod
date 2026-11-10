@@ -10,7 +10,7 @@ import { cloneNumber, count as cloneCount, MAX as CLONE_MAX, windowArgv } from '
 import type { Mood } from './moods'
 import { report } from './report'
 import { SIDEBAR_ID, SIDEBAR_TITLE, sidebarView } from './sidebar'
-import { Weather } from './weather'
+import { limitsFromReply, Weather } from './weather'
 import type { Piece } from './weather'
 
 const KEY = 'clawd'
@@ -128,7 +128,7 @@ async function readUsage($: EngineInterface, weather: Weather, cache: Cache, len
   try {
     const u = await $.session.usage({ breakdown: 'summary' })
     weather.record(u.context, u.rateLimits)
-    cache.limits = weather.limits
+    cache.limits = weather.hostLimits
     lens.set(u.context.breakdown, false)
   } catch {
     // no figures yet; the first reply brings them
@@ -385,7 +385,7 @@ export const register: Register = (on, options) => {
 
   on('session.measure', ($, e, next) => {
     weather.record(e.context, e.rateLimits)
-    cache.limits = weather.limits
+    cache.limits = weather.hostLimits
     $.ui.invalidate('ui.render')
     // our own auto-compact, a moment after the turn that passed the threshold
     if (e.changed.includes('context') && compactor.isDue(e.context.tokens ?? 0)) {
@@ -438,7 +438,7 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  // Clawd only watches prompts, tool calls, compaction and the sidebar closing; he never
+  // Clawd only watches prompts, tool calls, compaction, Claude's replies and the sidebar closing; he never
   // judges them. So if one of his hooks fails, its .catch lets the event go on as if he
   // were not there (next(e) replays what a call already settled to, so nothing runs twice).
   on('session.compact', async ($, e, next) => {
@@ -447,6 +447,26 @@ export const register: Register = (on, options) => {
       isRewritten = true
     }
     return done
+  }).catch(($, e, next) => next(e))
+
+  // The host does not report the Fable limit; each reply to the engine's own model
+  // requests carries it in its rate-limit headers. Read them and pass the reply on
+  // untouched: the body is still streaming to the engine.
+  on('http.fetch', async ($, e, next) => {
+    const answer = await next(e)
+    if (next.origin.plugin === 'engine') {
+      try {
+        // only a model request's reply carries it
+        const limits = limitsFromReply(e.url, answer)
+        if (limits.length) {
+          weather.record(undefined, limits)
+          $.ui.invalidate('ui.render')
+        }
+      } catch {
+        // a reply that reads oddly leaves the last reading
+      }
+    }
+    return answer
   }).catch(($, e, next) => next(e))
 
   // The person closed the sidebar with its close mark: the lines come back.

@@ -39,7 +39,7 @@ export type SidebarInput = {
   onProject: () => void
   onFollow: () => void
   onCount: () => void
-  // reads the limits again
+  // reads the host's figures again (the Fable limit waits for the next Fable reply)
   onRefresh: () => void
   onCompact: () => void
   onAuto: () => void

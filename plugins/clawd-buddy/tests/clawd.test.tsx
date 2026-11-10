@@ -22,7 +22,7 @@ import { report } from '../hooks/report'
 import { little } from '../hooks/sidebar'
 import { ACTS } from '../hooks/sprites'
 import { cloneNumber, count, encode, windowArgv, windowScript } from '../hooks/multiply'
-import { until, Weather } from '../hooks/weather'
+import { FABLE, limitsFromHeaders, limitsFromReply, until, Weather } from '../hooks/weather'
 
 const PROPS = {
   hasSurvey: false,
@@ -428,6 +428,261 @@ test('the limits outlast a measure without them, and read full once reset', () =
   expect(weather.windowsLeft(now).map((w) => `${w.label} ${w.left}`)).toEqual(['5h 70', 'week 49'])
   const later = Date.parse('2026-10-04T13:05:00Z')
   expect(weather.windowsLeft(later)[0]).toMatchObject({ label: '5h', left: 100 })
+})
+
+const FABLE_HEADERS = {
+  'anthropic-ratelimit-unified-7d_oi-utilization': '0.11',
+  'anthropic-ratelimit-unified-7d_oi-reset': '1794740400',
+  'anthropic-ratelimit-unified-7d_oi-status': 'allowed',
+}
+
+const USED = 'anthropic-ratelimit-unified-7d_oi-utilization'
+const RESET = 'anthropic-ratelimit-unified-7d_oi-reset'
+
+test("the Fable limit reads off a reply's rate-limit headers, and nothing else does", () => {
+  expect(limitsFromHeaders(FABLE_HEADERS)).toEqual([
+    { kind: FABLE, percentUsed: 11, resetsAt: '2026-11-15T11:00:00.000Z' },
+  ])
+  expect(limitsFromHeaders({ [USED]: ' 0.4567 ', [RESET]: '1794740400' })).toEqual([
+    { kind: FABLE, percentUsed: 45.7, resetsAt: '2026-11-15T11:00:00.000Z' },
+  ])
+  // another model, an API key, an error: no headers, no reading
+  expect(limitsFromHeaders({})).toEqual([])
+  expect(limitsFromHeaders({ 'anthropic-ratelimit-unified-7d-utilization': '0.4', [RESET]: '1794740400' })).toEqual([])
+  // only plain decimals
+  for (const used of ['', 'lots', 'NaN', 'Infinity', '0x1', '1e-1', '-0.2', '.5']) {
+    expect(limitsFromHeaders({ [USED]: used, [RESET]: '1794740400' })).toEqual([])
+  }
+  for (const reset of ['0x6af9d5f0', '1.79474e9', '1e3']) {
+    expect(limitsFromHeaders({ [USED]: '0.11', [RESET]: reset })).toEqual([])
+  }
+  // both are needed: a reading with no reset would never expire
+  expect(limitsFromHeaders({ [USED]: '0.4' })).toEqual([])
+  expect(limitsFromHeaders({ [USED]: '0.4', [RESET]: 'soon' })).toEqual([])
+  expect(limitsFromHeaders({ [USED]: '0.4', [RESET]: '0' })).toEqual([])
+  expect(limitsFromHeaders({ [RESET]: '1794740400' })).toEqual([])
+  // the reset is in seconds: one in milliseconds is no time at all, not the year 58843
+  expect(limitsFromHeaders({ [USED]: '0.4', [RESET]: '1794740400000' })).toEqual([])
+  // past the window reads 100 used, never more
+  expect(limitsFromHeaders({ [USED]: '1.3', [RESET]: '1794740400' })[0]?.percentUsed).toBe(100)
+  // never throws, whatever it is handed
+  for (const odd of [null, undefined, 'headers', 7, [], { [USED]: 0.11, [RESET]: 1794740400 }]) {
+    expect(limitsFromHeaders(odd)).toEqual([])
+  }
+  const throwing = {
+    get [USED]() {
+      throw new Error('no')
+    },
+  }
+  expect(limitsFromHeaders(throwing)).toEqual([])
+})
+
+test("only a model request's reply gives the Fable reading, wrapped or bare", () => {
+  const url = 'https://api.anthropic.com/v1/messages'
+  const reading = [{ kind: FABLE, percentUsed: 11, resetsAt: '2026-11-15T11:00:00.000Z' }]
+  // as an engine request resolves, and as a bare response
+  expect(limitsFromReply(url, { value: { status: 200, ok: true, headers: FABLE_HEADERS, isStreaming: true } })).toEqual(
+    reading,
+  )
+  expect(limitsFromReply(url, { status: 200, headers: FABLE_HEADERS })).toEqual(reading)
+  // a query string, or a gateway on another host
+  expect(limitsFromReply(`${url}?beta=true`, { value: { headers: FABLE_HEADERS } })).toEqual(reading)
+  expect(limitsFromReply('https://gateway.example/anthropic/v1/messages', { headers: FABLE_HEADERS })).toEqual(reading)
+  // a denied request, nothing at all, not a response
+  expect(limitsFromReply(url, { deny: 'blocked by a mod' })).toEqual([])
+  for (const odd of [null, undefined, 'a reply', 7, { value: null }, { value: { headers: 'x' } }, { headers: null }]) {
+    expect(limitsFromReply(url, odd)).toEqual([])
+  }
+  // any other request through the hook, however its headers read
+  for (const other of [
+    'https://api.anthropic.com/v1/messages/count_tokens',
+    'https://api.anthropic.com/v1/models',
+    'https://example.com/?next=/v1/messages',
+    '',
+  ]) {
+    expect(limitsFromReply(other, { value: { headers: FABLE_HEADERS } })).toEqual([])
+  }
+  expect(limitsFromReply(undefined as unknown as string, { headers: FABLE_HEADERS })).toEqual([])
+  // header values that are not strings
+  expect(limitsFromReply(url, { value: { headers: { [USED]: 0.11, [RESET]: 1794740400 } } })).toEqual([])
+  expect(limitsFromReply(url, { headers: { [USED]: ['0.11'], [RESET]: { at: 1 } } })).toEqual([])
+})
+
+// A weather line with the two host windows and, unless `isFable` is false, the Fable one.
+const threeWindows = (used: [number, number, number], isFable = true) => {
+  const weather = new Weather()
+  weather.record({ tokens: 20_000, window: 200_000 }, [])
+  weather.record({ tokens: 36_000, window: 200_000, percent: 18 }, [
+    { kind: 'five_hour', percentUsed: used[0], resetsAt: '2026-10-04T14:10:00Z' },
+    { kind: 'seven_day', percentUsed: used[1], resetsAt: '2026-10-07T16:00:00Z' },
+  ])
+  if (isFable) {
+    weather.record(undefined, [{ kind: FABLE, percentUsed: used[2], resetsAt: '2026-10-08T09:00:00Z' }])
+  }
+  return weather
+}
+const LEAD = [{ text: 'cache ', dim: true }, { text: '42m' }]
+
+test('the Fable limit shows third on the line, and goes first on the narrowest', () => {
+  const weather = threeWindows([7, 23.5, 11])
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  const steps = [200, 140, 110, 100, 72, 64, 57, 47, 40].map((columns) => {
+    const { left, right } = weather.line(columns, now)
+    expect(text(left).length + text(right).length + 3).toBeLessThanOrEqual(columns)
+    return `${text(left)} | ${text(right)}`
+  })
+  expect(steps).toEqual([
+    '☀  Clear  18% of ctx (36k/200k)  ▄█  ▲ +16k | 5h ━━━━━━━━ 93% left ↻ 2h 10m   week ━━━━━━━━ 77% left ↻ 3d 4h   fable ━━━━━━━━ 89% left ↻ 3d 21h',
+    '☀  Clear  18% of ctx (36k/200k) | 5h ━━━━━━━━ 93% left ↻ 2h 10m   week ━━━━━━━━ 77% left ↻ 3d 4h   fable ━━━━━━━━ 89% left ↻ 3d 21h',
+    '☀  Clear  18% of ctx (36k/200k) | 5h ━━━━━━━━ 93% left   week ━━━━━━━━ 77% left   fable ━━━━━━━━ 89% left',
+    '☀  Clear  18% (36k/200k) | 5h ━━━━━━━━ 93% left   week ━━━━━━━━ 77% left   fable ━━━━━━━━ 89% left',
+    '☀  Clear  18% (36k/200k) | 5h 93% left   week 77% left   fable 89% left',
+    '☀  Clear  18% ctx | 5h 93% left   week 77% left   fable 89% left',
+    '☀  18% ctx | 5h 93% left   week 77% left   fable 89% left',
+    // narrower, `left` is said once, after the last window
+    '☀  18% ctx | 5h 93%   week 77%   fable 89% left',
+    // narrowest, the Fable window goes: the line two windows have always had
+    '☀  18% ctx | 5h 93% left   week 77% left',
+  ])
+})
+
+test('with the cache countdown and full windows every layout of three fits its width', () => {
+  const weather = threeWindows([0, 0, 0])
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  const seen: string[] = []
+  for (let columns = 200; columns >= 54; columns--) {
+    const { left, right } = weather.line(columns, now, LEAD)
+    expect(text(left).length + text(right).length + 3).toBeLessThanOrEqual(columns)
+    const step = `${text(left)} | ${text(right)}`
+    if (seen.at(-1) !== step) {
+      seen.push(step)
+    }
+  }
+  expect(seen).toEqual([
+    '☀  Clear  18% of ctx (36k/200k)  ▄█  ▲ +16k | cache 42m   5h ━━━━━━━━ 100% left ↻ 2h 10m   week ━━━━━━━━ 100% left ↻ 3d 4h   fable ━━━━━━━━ 100% left ↻ 3d 21h',
+    '☀  Clear  18% of ctx (36k/200k) | cache 42m   5h ━━━━━━━━ 100% left ↻ 2h 10m   week ━━━━━━━━ 100% left ↻ 3d 4h   fable ━━━━━━━━ 100% left ↻ 3d 21h',
+    '☀  Clear  18% of ctx (36k/200k) | cache 42m   5h ━━━━━━━━ 100% left   week ━━━━━━━━ 100% left   fable ━━━━━━━━ 100% left',
+    '☀  Clear  18% (36k/200k) | cache 42m   5h ━━━━━━━━ 100% left   week ━━━━━━━━ 100% left   fable ━━━━━━━━ 100% left',
+    '☀  Clear  18% (36k/200k) | cache 42m   5h 100% left   week 100% left   fable 100% left',
+    '☀  Clear  18% ctx | cache 42m   5h 100% left   week 100% left   fable 100% left',
+    '☀  18% ctx | cache 42m   5h 100% left   week 100% left   fable 100% left',
+    '☀  18% ctx | cache 42m   5h 100%   week 100%   fable 100% left',
+    '☀  18% ctx | cache 42m   5h 100% left   week 100% left',
+  ])
+})
+
+test('once the forecast word goes it stays gone as the band narrows', () => {
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  for (const weather of [threeWindows([7, 23.5, 11]), threeWindows([0, 0, 0]), threeWindows([7, 23.5, 0], false)]) {
+    for (const lead of [[], LEAD]) {
+      let isGone = false
+      for (let columns = 200; columns >= 20; columns--) {
+        const hasWord = text(weather.line(columns, now, lead).left).includes('Clear')
+        expect(isGone && hasWord).toBe(false)
+        isGone ||= !hasWord
+      }
+      expect(isGone).toBe(true)
+    }
+  }
+})
+
+test('where two windows fit, three still do: the Fable window gives way', () => {
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  const two = threeWindows([7, 23.5, 11], false)
+  const three = threeWindows([7, 23.5, 11])
+  // the narrowest the two windows fit: 40 columns, and 52 after `cache 42m`
+  for (const [lead, columns] of [
+    [[], 40],
+    [LEAD, 52],
+  ] as const) {
+    const pair = two.line(columns, now, [...lead])
+    expect(text(pair.left).length + text(pair.right).length + 3).toBe(columns)
+    expect(three.line(columns, now, [...lead])).toEqual(pair)
+  }
+  // and narrower still, three windows end on the line two do
+  expect(three.line(30, now)).toEqual(two.line(30, now))
+  expect(three.line(30, now, LEAD)).toEqual(two.line(30, now, LEAD))
+})
+
+test('with no Fable reading two windows narrow just as before', () => {
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  const weather = threeWindows([7, 23.5, 11], false)
+  const steps = [160, 100, 90, 72, 54, 47, 40, 39, 35, 20].map((columns) => {
+    const { left, right } = weather.line(columns, now)
+    return `${text(left)} | ${text(right)}`
+  })
+  expect(steps).toEqual([
+    '☀  Clear  18% of ctx (36k/200k)  ▄█  ▲ +16k | 5h ━━━━━━━━ 93% left ↻ 2h 10m   week ━━━━━━━━ 77% left ↻ 3d 4h',
+    '☀  Clear  18% of ctx (36k/200k) | 5h ━━━━━━━━ 93% left ↻ 2h 10m   week ━━━━━━━━ 77% left ↻ 3d 4h',
+    '☀  Clear  18% of ctx (36k/200k) | 5h ━━━━━━━━ 93% left   week ━━━━━━━━ 77% left',
+    '☀  Clear  18% (36k/200k) | 5h ━━━━━━━━ 93% left   week ━━━━━━━━ 77% left',
+    '☀  Clear  18% (36k/200k) | 5h 93% left   week 77% left',
+    '☀  Clear  18% ctx | 5h 93% left   week 77% left',
+    '☀  18% ctx | 5h 93% left   week 77% left',
+    // too narrow for anything: the last layout, `left` on each, as it always was
+    '☀  18% ctx | 5h 93% left   week 77% left',
+    '☀  18% ctx | 5h 93% left   week 77% left',
+    '☀  18% ctx | 5h 93% left   week 77% left',
+  ])
+  expect(text(weather.line(52, now, LEAD).right)).toBe('cache 42m   5h 93% left   week 77% left')
+})
+
+test('the Fable reading outlasts replies that report only the host windows', () => {
+  const weather = new Weather()
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  weather.record(undefined, limitsFromHeaders(FABLE_HEADERS))
+  weather.record({ tokens: 1000, window: 200_000 }, [
+    { kind: 'five_hour', percentUsed: 30 },
+    { kind: 'seven_day', percentUsed: 50 },
+  ])
+  // a reply from another model: no headers, nothing changes
+  weather.record(undefined, limitsFromHeaders({}))
+  expect(weather.windowsLeft(now).map((w) => `${w.label} ${w.left}`)).toEqual(['5h 70', 'week 50', 'fable 89'])
+})
+
+test('/clawd context lists the Fable limit after the week', () => {
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  const weather = new Weather()
+  weather.record({ tokens: 140_800, window: 1_000_000, percent: 14 }, [
+    { kind: 'five_hour', percentUsed: 7, resetsAt: '2026-10-04T14:10:00Z' },
+    { kind: 'seven_day', percentUsed: 23.5, resetsAt: '2026-10-07T16:00:00Z' },
+  ])
+  weather.record(undefined, [{ kind: FABLE, percentUsed: 11, resetsAt: '2026-10-08T09:00:00Z' }])
+  const out = report({ weather, lens: new Lens(), cache: new Cache(), compactor: new Compactor(), now })
+  expect(out).toContain(
+    [
+      'Limits   5h: 93% left, resets in 2h 10m',
+      '         week: 77% left, resets in 3d 4h',
+      '         fable: 89% left, resets in 3d 21h',
+    ].join('\n'),
+  )
+})
+
+test("the cache's guess at the plan never reads the Fable limit", async ($, on) => {
+  mock.clock(on)
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  const context = { window: 200_000 }
+  const clawdContext = async () =>
+    (
+      await $.command.run({
+        command: 'clawd',
+        args: 'context',
+        origin: { kind: 'composer' },
+        presentation: { isFullscreen: false, columns: 80 },
+      })
+    ).text
+  // a subscription within its host windows, the Fable limit spent: still 1 hour
+  await $.session.measure({
+    context,
+    rateLimits: [
+      { kind: 'five_hour', percentUsed: 40 },
+      { kind: FABLE, percentUsed: 100 },
+    ] as Parameters<typeof $.session.measure>[0]['rateLimits'],
+    changed: ['rateLimits'],
+  })
+  const out = await clawdContext()
+  expect(out).toContain('fable: 0% left')
+  expect(out).toContain('(1h TTL, subscription default)')
 })
 
 test('the cache leads the right half of the weather line', () => {

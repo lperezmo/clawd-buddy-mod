@@ -1,5 +1,8 @@
 // The line under Clawd: how full the context window is, as a weather forecast,
-// and what is left of the 5-hour and weekly usage limits.
+// and what is left of the 5-hour, weekly and Fable usage limits. The host
+// reports the first two; the Fable limit (the model-scoped weekly window) is
+// read from the rate-limit headers of Claude's own replies, so it shows after
+// the first reply from a Fable model, and only on a subscription.
 //
 // The forecast follows token-weather from anthropics/claude-code-playground
 // (Apache-2.0, see LICENSE-APACHE and NOTICE): same bands, icons and turn
@@ -25,11 +28,69 @@ const FORECAST = [
   { upTo: Infinity, icon: '↯', word: 'Compact soon', color: 'red' },
 ]
 
+// The Fable limit, by the name Claude Code uses internally for that window (the
+// headers call it `7d_oi`); the mod API does not report it.
+export const FABLE = 'seven_day_overage_included'
+
+const FABLE_LABEL = 'fable'
+
 // The usage windows shown, in order; a gateway's spend limit is left out.
 const WINDOWS = [
   { kind: 'five_hour', label: '5h' },
   { kind: 'seven_day', label: 'week' },
+  { kind: FABLE, label: FABLE_LABEL },
 ]
+
+// A header's value as a plain decimal (`0.11`, `1794740400`): anything else,
+// hex, an exponent, an empty or non-string value, is NaN.
+function decimal(value: unknown): number {
+  const s = typeof value === 'string' ? value.trim() : ''
+  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : NaN
+}
+
+// Past this an epoch reset is not in seconds (a time in milliseconds, say).
+const MAX_RESET = 1e11
+
+// The Fable limit as a reply's headers carry it: the fraction used and the
+// reset in epoch seconds, both needed, as the host's own parser wants them (a
+// reading with no reset would never expire). Headers without it (another
+// model, an API key, an error) give nothing, and the last reading stands.
+export function limitsFromHeaders(headers: unknown): Limit[] {
+  try {
+    if (typeof headers !== 'object' || headers === null) {
+      return []
+    }
+    const h = headers as Record<string, unknown>
+    const fraction = decimal(h['anthropic-ratelimit-unified-7d_oi-utilization'])
+    const reset = decimal(h['anthropic-ratelimit-unified-7d_oi-reset'])
+    if (!Number.isFinite(fraction) || !(reset > 0 && reset < MAX_RESET)) {
+      return []
+    }
+    // as the host converts it: a percentage to one decimal, at most 100
+    const percentUsed = Math.min(Math.round(fraction * 1000) / 10, 100)
+    return [{ kind: FABLE, percentUsed, resetsAt: new Date(reset * 1000).toISOString() }]
+  } catch {
+    return []
+  }
+}
+
+// The Fable limit from what an `http.fetch` hook's `next` gave: only the reply
+// to a model request (`/v1/messages`, on any host) counts, as the response
+// itself or wrapped as `{ value }`. Anything else gives nothing.
+export function limitsFromReply(url: string, answer: unknown): Limit[] {
+  try {
+    const path = typeof url === 'string' ? url.split(/[?#]/)[0]! : ''
+    if (!path.endsWith('/v1/messages') || typeof answer !== 'object' || answer === null) {
+      return []
+    }
+    const a = answer as { value?: unknown; headers?: unknown }
+    const reply = typeof a.value === 'object' && a.value !== null ? (a.value as { headers?: unknown }) : a
+    const headers = reply.headers
+    return typeof headers === 'object' && headers !== null ? limitsFromHeaders(headers) : []
+  } catch {
+    return []
+  }
+}
 
 export function short(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
@@ -53,6 +114,11 @@ const width = (pieces: Piece[]) => pieces.reduce((n, p) => n + [...p.text].lengt
 export class Weather {
   readings: Reading[] = []
   limits: Limit[] = []
+
+  // The windows the host reports, without the Fable limit read from the replies' headers.
+  get hostLimits(): Limit[] {
+    return this.limits.filter((l) => l.kind !== FABLE)
+  }
 
   record(context: Context | undefined, limits: Limit[] | undefined): void {
     // a measure without a window keeps the last one known: only replies carry them
@@ -123,23 +189,32 @@ export class Weather {
   // Left and right halves of the line, the richest pair that fits `columns`;
   // `lead` (the cache countdown) opens the right half and always stays.
   line(columns: number, now: number, lead: Piece[] = []): { left: Piece[]; right: Piece[] } {
-    // [context detail, reset times, meters], richest first. Context detail:
-    // 0 chart and trend, 1 `of ctx (36k/200k)`, 2 `(36k/200k)`, 3 `ctx`, 4 `ctx` without the word.
-    // The token counts outlast the reset times and meters on the right.
-    const tries: [number, boolean, boolean][] = [
-      [0, true, true],
-      [1, true, true],
-      [1, false, true],
-      [2, false, true],
-      [2, false, false],
-      [3, false, false],
-      [4, false, false],
+    // [context detail, reset times, meters, `left` on each, the Fable window], richest first.
+    // Context detail: 0 chart and trend, 1 `of ctx (36k/200k)`, 2 `(36k/200k)`, 3 `ctx`,
+    // 4 `ctx` without the word. The token counts outlast the reset times and meters on the right.
+    // Past the first seven, `left` is said once, after the last window; then the Fable window
+    // goes, which leaves the narrowest line exactly as it is with two windows. Without a Fable
+    // reading the `left` once tier is skipped, so two windows narrow just as they always have.
+    const tries: [number, boolean, boolean, boolean, boolean][] = [
+      [0, true, true, true, true],
+      [1, true, true, true, true],
+      [1, false, true, true, true],
+      [2, false, true, true, true],
+      [2, false, false, true, true],
+      [3, false, false, true, true],
+      [4, false, false, true, true],
+      [4, false, false, false, true],
+      [4, false, false, true, false],
     ]
+    const hasFable = this.usage().some((u) => u.label === FABLE_LABEL)
     let pair = { left: [] as Piece[], right: [] as Piece[] }
-    for (const [detail, isTimed, isMetered] of tries) {
+    for (const [detail, isTimed, isMetered, isWorded, isFable] of tries) {
+      if (!isWorded && !hasFable) {
+        continue
+      }
       pair = {
         left: this.forecast(detail),
-        right: this.withLead(lead, this.windows(isTimed, isMetered, now)),
+        right: this.withLead(lead, this.windows(isTimed, isMetered, isWorded, isFable, now)),
       }
       if (width(pair.left) + width(pair.right) + GAP.length <= columns) {
         break
@@ -200,9 +275,10 @@ export class Weather {
     return 'steady'
   }
 
-  private windows(isTimed: boolean, isMetered: boolean, now: number): Piece[] {
+  private windows(isTimed: boolean, isMetered: boolean, isWorded: boolean, isFable: boolean, now: number): Piece[] {
     const pieces: Piece[] = []
-    for (const { label, left, color, resetsAt: resets } of this.windowsLeft(now)) {
+    const windows = this.windowsLeft(now).filter((w) => isFable || w.label !== FABLE_LABEL)
+    for (const [i, { label, left, color, resetsAt: resets }] of windows.entries()) {
       if (pieces.length) {
         pieces.push({ text: GAP })
       }
@@ -212,7 +288,7 @@ export class Weather {
         pieces.push({ text: '━'.repeat(full), color })
         pieces.push({ text: '━'.repeat(METER - full) + ' ', dim: true })
       }
-      pieces.push({ text: `${left}% left`, color })
+      pieces.push({ text: isWorded || i === windows.length - 1 ? `${left}% left` : `${left}%`, color })
       if (isTimed && now > 0 && !Number.isNaN(resets)) {
         pieces.push({ text: ` ↻ ${until(resets - now)}`, dim: true })
       }
