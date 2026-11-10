@@ -1,5 +1,7 @@
 // The line under Clawd: how full the context window is, as a weather forecast,
-// and what is left of the 5-hour and weekly usage limits.
+// and what is left of the 5-hour, weekly and Fable usage limits. The host
+// reports the first two; the Fable limit (the weekly limit of Fable models) is
+// read from the rate-limit headers of Claude's replies (`limitsFromHeaders`).
 //
 // The forecast follows token-weather from anthropics/claude-code-playground
 // (Apache-2.0, see LICENSE-APACHE and NOTICE): same bands, icons and turn
@@ -25,11 +27,36 @@ const FORECAST = [
   { upTo: Infinity, icon: '↯', word: 'Compact soon', color: 'red' },
 ]
 
+// The Fable limit's kind, as the host names the window.
+export const FABLE = 'seven_day_overage_included'
+
 // The usage windows shown, in order; a gateway's spend limit is left out.
 const WINDOWS = [
   { kind: 'five_hour', label: '5h' },
   { kind: 'seven_day', label: 'week' },
+  { kind: FABLE, label: 'fable' },
 ]
+
+const HEADER = 'anthropic-ratelimit-unified-7d_oi'
+
+// The Fable limit from a reply's headers (lower-cased names): utilization a
+// fraction of the window used, reset in epoch seconds. A reply without them
+// (another model, an API key, an error) gives nothing, and the last reading stays.
+export function limitsFromHeaders(headers: Record<string, string>): Limit[] {
+  const raw = headers[`${HEADER}-utilization`]?.trim()
+  const used = raw ? Number(raw) : NaN
+  if (!Number.isFinite(used)) {
+    return []
+  }
+  // as the host converts it
+  const limit: Limit = { kind: FABLE, percentUsed: Math.max(0, Math.min(Math.round(used * 1000) / 10, 100)) }
+  const reset = Number(headers[`${HEADER}-reset`]?.trim() || NaN)
+  // past the last date a Date holds, toISOString throws
+  if (Number.isFinite(reset) && reset > 0 && reset <= 8.64e12) {
+    limit.resetsAt = new Date(reset * 1000).toISOString()
+  }
+  return [limit]
+}
 
 export function short(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
@@ -88,6 +115,12 @@ export class Weather {
     }
   }
 
+  // The windows the host reports, without the Fable limit read from headers:
+  // what the cache judges the plan by.
+  get hostLimits(): Limit[] {
+    return this.limits.filter((l) => l.kind !== FABLE)
+  }
+
   get isEmpty(): boolean {
     return this.readings.length === 0 && this.usage().length === 0
   }
@@ -104,14 +137,16 @@ export class Weather {
 
   // Each usage window: what is left, its color and when it resets (NaN unknown).
   // A window whose reset has passed since the last reply is full again.
-  windowsLeft(now = 0): { label: string; left: number; color: string; resetsAt: number }[] {
+  windowsLeft(now = 0): { kind: string; label: string; left: number; color: string; resetsAt: number }[] {
     return this.usage().map(({ label, limit }) => {
+      const kind = limit.kind
       const resetsAt = limit.resetsAt ? Date.parse(limit.resetsAt) : NaN
       if (now > 0 && resetsAt <= now) {
-        return { label, left: 100, color: 'green', resetsAt: NaN }
+        return { kind, label, left: 100, color: 'green', resetsAt: NaN }
       }
       const left = Math.max(0, Math.min(100, Math.round(100 - limit.percentUsed)))
       return {
+        kind,
         label,
         left,
         color: left > 50 ? 'green' : left > 20 ? 'yellow' : 'red',
@@ -123,10 +158,11 @@ export class Weather {
   // Left and right halves of the line, the richest pair that fits `columns`;
   // `lead` (the cache countdown) opens the right half and always stays.
   line(columns: number, now: number, lead: Piece[] = []): { left: Piece[]; right: Piece[] } {
-    // [context detail, reset times, meters], richest first. Context detail:
+    // [context detail, reset times, meters, Fable limit (unless false)], richest first. Context detail:
     // 0 chart and trend, 1 `of ctx (36k/200k)`, 2 `(36k/200k)`, 3 `ctx`, 4 `ctx` without the word.
-    // The token counts outlast the reset times and meters on the right.
-    const tries: [number, boolean, boolean][] = [
+    // The token counts outlast the reset times and meters on the right; the
+    // Fable limit goes last, so the narrowest bands keep the two plan windows.
+    const tries: [number, boolean, boolean, boolean?][] = [
       [0, true, true],
       [1, true, true],
       [1, false, true],
@@ -134,12 +170,14 @@ export class Weather {
       [2, false, false],
       [3, false, false],
       [4, false, false],
+      [3, false, false, false],
+      [4, false, false, false],
     ]
     let pair = { left: [] as Piece[], right: [] as Piece[] }
-    for (const [detail, isTimed, isMetered] of tries) {
+    for (const [detail, isTimed, isMetered, isFable = true] of tries) {
       pair = {
         left: this.forecast(detail),
-        right: this.withLead(lead, this.windows(isTimed, isMetered, now)),
+        right: this.withLead(lead, this.windows(isTimed, isMetered, isFable, now)),
       }
       if (width(pair.left) + width(pair.right) + GAP.length <= columns) {
         break
@@ -200,9 +238,12 @@ export class Weather {
     return 'steady'
   }
 
-  private windows(isTimed: boolean, isMetered: boolean, now: number): Piece[] {
+  private windows(isTimed: boolean, isMetered: boolean, isFable: boolean, now: number): Piece[] {
     const pieces: Piece[] = []
-    for (const { label, left, color, resetsAt: resets } of this.windowsLeft(now)) {
+    for (const { kind, label, left, color, resetsAt: resets } of this.windowsLeft(now)) {
+      if (!isFable && kind === FABLE) {
+        continue
+      }
       if (pieces.length) {
         pieces.push({ text: GAP })
       }

@@ -22,7 +22,7 @@ import { report } from '../hooks/report'
 import { little } from '../hooks/sidebar'
 import { ACTS } from '../hooks/sprites'
 import { cloneNumber, count, encode, windowArgv, windowScript } from '../hooks/multiply'
-import { until, Weather } from '../hooks/weather'
+import { FABLE, limitsFromHeaders, until, Weather } from '../hooks/weather'
 
 const PROPS = {
   hasSurvey: false,
@@ -428,6 +428,105 @@ test('the limits outlast a measure without them, and read full once reset', () =
   expect(weather.windowsLeft(now).map((w) => `${w.label} ${w.left}`)).toEqual(['5h 70', 'week 49'])
   const later = Date.parse('2026-10-04T13:05:00Z')
   expect(weather.windowsLeft(later)[0]).toMatchObject({ label: '5h', left: 100 })
+})
+
+const FABLE_HEADERS = {
+  'anthropic-ratelimit-unified-7d_oi-utilization': '0.11',
+  'anthropic-ratelimit-unified-7d_oi-reset': '1794740400',
+  'anthropic-ratelimit-unified-7d_oi-status': 'allowed',
+}
+
+test("the Fable limit reads from a reply's rate-limit headers, or not at all", () => {
+  expect(limitsFromHeaders(FABLE_HEADERS)).toEqual([
+    { kind: FABLE, percentUsed: 11, resetsAt: new Date(1794740400 * 1000).toISOString() },
+  ])
+  // another model, an API key or an error: no headers, no reading
+  expect(limitsFromHeaders({})).toEqual([])
+  expect(limitsFromHeaders({ 'anthropic-ratelimit-unified-7d_oi-reset': '1794740400' })).toEqual([])
+  for (const garbage of ['', ' ', 'NaN', 'lots', 'Infinity']) {
+    expect(limitsFromHeaders({ 'anthropic-ratelimit-unified-7d_oi-utilization': garbage })).toEqual([])
+  }
+  // the host's rounding, and never past full or under empty
+  expect(limitsFromHeaders({ 'anthropic-ratelimit-unified-7d_oi-utilization': '0.12345' })).toEqual([
+    { kind: FABLE, percentUsed: 12.3 },
+  ])
+  expect(limitsFromHeaders({ 'anthropic-ratelimit-unified-7d_oi-utilization': '1.7' })[0]?.percentUsed).toBe(100)
+  expect(limitsFromHeaders({ 'anthropic-ratelimit-unified-7d_oi-utilization': '-0.2' })[0]?.percentUsed).toBe(0)
+  // a reset that is not a time is left out
+  for (const reset of ['', 'soon', '0', '-5', '1e30']) {
+    const [limit] = limitsFromHeaders({ ...FABLE_HEADERS, 'anthropic-ratelimit-unified-7d_oi-reset': reset })
+    expect(limit).toEqual({ kind: FABLE, percentUsed: 11 })
+  }
+})
+
+test('the Fable limit follows the week on the line, and only the narrowest bands drop it', () => {
+  const weather = new Weather()
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  weather.record({ tokens: 20_000, window: 200_000 }, [])
+  weather.record({ tokens: 36_000, window: 200_000, percent: 18 }, [
+    { kind: 'five_hour', percentUsed: 7, resetsAt: '2026-10-04T14:10:00Z' },
+    { kind: 'seven_day', percentUsed: 23.5, resetsAt: '2026-10-07T16:00:00Z' },
+  ])
+  weather.record(undefined, [{ kind: FABLE, percentUsed: 11, resetsAt: '2026-10-08T18:00:00Z' }])
+  const steps = [160, 135, 110, 100, 80, 64, 57, 47, 40].map((columns) => {
+    const { left, right } = weather.line(columns, now)
+    return `${text(left)} | ${text(right)}`
+  })
+  expect(steps).toEqual([
+    '☀  Clear  18% of ctx (36k/200k)  ▄█  ▲ +16k | 5h ━━━━━━━━ 93% left ↻ 2h 10m   week ━━━━━━━━ 77% left ↻ 3d 4h   fable ━━━━━━━━ 89% left ↻ 4d 6h',
+    '☀  Clear  18% of ctx (36k/200k) | 5h ━━━━━━━━ 93% left ↻ 2h 10m   week ━━━━━━━━ 77% left ↻ 3d 4h   fable ━━━━━━━━ 89% left ↻ 4d 6h',
+    '☀  Clear  18% of ctx (36k/200k) | 5h ━━━━━━━━ 93% left   week ━━━━━━━━ 77% left   fable ━━━━━━━━ 89% left',
+    '☀  Clear  18% (36k/200k) | 5h ━━━━━━━━ 93% left   week ━━━━━━━━ 77% left   fable ━━━━━━━━ 89% left',
+    '☀  Clear  18% (36k/200k) | 5h 93% left   week 77% left   fable 89% left',
+    '☀  Clear  18% ctx | 5h 93% left   week 77% left   fable 89% left',
+    '☀  18% ctx | 5h 93% left   week 77% left   fable 89% left',
+    '☀  Clear  18% ctx | 5h 93% left   week 77% left',
+    '☀  18% ctx | 5h 93% left   week 77% left',
+  ])
+})
+
+test('a Fable reading outlasts the host limits that come after it, and stays out of the cache', () => {
+  const weather = new Weather()
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  weather.record(undefined, limitsFromHeaders(FABLE_HEADERS))
+  weather.record({ tokens: 1000, window: 200_000 }, [
+    { kind: 'five_hour', percentUsed: 30, resetsAt: '2026-10-04T13:00:00Z' },
+    { kind: 'seven_day', percentUsed: 50, resetsAt: '2026-10-07T16:00:00Z' },
+  ])
+  // a reply from another model carries no Fable headers
+  weather.record(undefined, limitsFromHeaders({}))
+  expect(weather.windowsLeft(now).map((w) => `${w.label} ${w.left}`)).toEqual(['5h 70', 'week 50', 'fable 89'])
+
+  // a Fable limit used up says nothing about the plan's cache TTL
+  weather.record(undefined, [{ kind: FABLE, percentUsed: 100 }])
+  const cache = new Cache()
+  cache.limits = weather.hostLimits
+  expect(cache.limits.map((l) => l.kind)).toEqual(['five_hour', 'seven_day'])
+  expect(cache.label).toBe('1h')
+  expect(cache.source).toBe('subscription default')
+  // and alone it does not make an API key look like a subscription
+  const alone = new Weather()
+  alone.record(undefined, [{ kind: FABLE, percentUsed: 40 }])
+  cache.limits = alone.hostLimits
+  expect(cache.label).toBe('5m')
+})
+
+test('/clawd context lists the Fable limit after the week', () => {
+  const now = Date.parse('2026-10-04T12:00:00Z')
+  const weather = new Weather()
+  weather.record(undefined, [
+    { kind: 'five_hour', percentUsed: 7, resetsAt: '2026-10-04T14:10:00Z' },
+    { kind: 'seven_day', percentUsed: 23.5, resetsAt: '2026-10-07T16:00:00Z' },
+    { kind: FABLE, percentUsed: 11, resetsAt: '2026-10-08T18:00:00Z' },
+  ])
+  const out = report({ weather, lens: new Lens(), cache: new Cache(), compactor: new Compactor(), now })
+  expect(out).toContain(
+    [
+      'Limits   5h: 93% left, resets in 2h 10m',
+      '         week: 77% left, resets in 3d 4h',
+      '         fable: 89% left, resets in 4d 6h',
+    ].join('\n'),
+  )
 })
 
 test('the cache leads the right half of the weather line', () => {

@@ -8,7 +8,7 @@ Clawd moves in above your Claude Code prompt. He locks in while Claude works,
 chills when it goes quiet, celebrates when a long turn ends and hops when you
 talk to him. Under him, a line forecasts the context
 window, counts down to the prompt cache going cold and shows what is left of
-your 5-hour and weekly limits, and a context bar opens into a live `/context`
+your 5-hour, weekly and Fable limits, and a context bar opens into a live `/context`
 breakdown. One click moves all of it to a sidebar.
 
 ![Clawd above the prompt in Claude Code, with the sidebar open showing usage limits, prompt cache and the context breakdown](docs/demo.gif)
@@ -57,7 +57,7 @@ Once Claude has answered once, a line under Clawd reads the session's figures,
 the same ones the status line has:
 
 ```
-☀  Clear  18% of ctx (36k/200k)  ▃▅█  ▲ +16k     cache 42m   5h ━━━━━━━━ 93% left ↻ 2h 10m   week ━━━━━━── 77% left ↻ 3d 4h
+☀  Clear  18% of ctx (36k/200k)  ▃▅█  ▲ +16k     cache 42m   5h ━━━━━━━━ 93% left ↻ 2h 10m   week ━━━━━━── 77% left ↻ 3d 4h   fable ━━━━━━━─ 89% left ↻ 4d 6h
 ```
 
 - **Left:** how full the context window is, as weather (Clear, Cloudy, Showers,
@@ -69,15 +69,19 @@ the same ones the status line has:
   cache read after more than 5.5 minutes idle means 1 hour), else Claude Code's
   own pick: 1 hour on a Pro or Max plan, 5 minutes on an API key. It reads `cold` once it
   has expired, when the next request pays to write the prompt to the cache again.
-- **Right:** what is left of the 5-hour and weekly usage limits and when each
-  resets. Green above 50%, yellow above 20%, red below. Only Claude's replies
-  carry them, so between replies they hold the last figures, and a window whose
-  reset has passed reads full.
+- **Right:** what is left of the 5-hour and weekly usage limits, then the Fable
+  limit (the weekly limit on Fable models), and when each resets. Green above 50%,
+  yellow above 20%, red below. Only Claude's replies carry them, so between replies
+  they hold the last figures, and a window whose reset has passed reads full.
 
 The limits only show on a Claude subscription; on an API key there are none to
-read. On a narrow terminal it gives way in this order: the chart, the reset
-countdowns, `of ctx` (leaving `18% (36k/200k)`), the meters, the token counts
-(leaving `18% ctx`), and last the forecast word.
+read. Claude Code reports the 5-hour and weekly limits itself; the Fable limit is
+read from the rate-limit headers of Claude's replies, so it shows after the first
+reply from a Fable model in the session, and only on a subscription. On a narrow
+terminal the line gives way in this order: the chart, the reset countdowns, `of ctx`
+(leaving `18% (36k/200k)`), the meters, the token counts (leaving `18% ctx`), the
+forecast word, and then the Fable limit, which takes the forecast word's place back
+so the 5-hour and weekly limits still fit.
 
 ## The context view
 
@@ -178,8 +182,8 @@ its window sets for it.
   sends him on one (walk, skate, scooter, bike, car, kite, space, pool), and **`/clawd <act>`**
   plays an act by name (`/clawd dancing`, `/clawd coffee`). `/clawd` alone makes him hop.
 - **`/clawd context`** (or `/clawd c`, quick to type from a phone over remote control, or `/clawd status`) reads the figures again and answers with the band's figures as plain text:
-  the context by category, growth and headroom, the cache countdown, the 5h and week
-  limits, and the auto-compact setting. Handy on the phone, where remote control shows a
+  the context by category, growth and headroom, the cache countdown, the 5h, week and
+  fable limits, and the auto-compact setting. Handy on the phone, where remote control shows a
   command's answer but not the band.
 - **Hide just Clawd:** `h: hide clawd` (or `/clawd hide`) keeps the lines and tucks him
   away; `h: show clawd` or `/clawd show` brings him back. It sticks across sessions.
@@ -208,12 +212,14 @@ there, so he stays in view when a press scrolls the band, and walks its whole wi
   open a window per clone on `/multiply`; and
   `git rev-parse` and `git status`, read only, for the marks by each file.
 - **Hooks:** the `/clawd` command (and `/multiply` on Windows), the band above the prompt,
-  prompt, turn and tool-call events to pick his moods, and the session's usage figures for
-  the line. It never changes a prompt, a tool call or its result.
+  prompt, turn and tool-call events to pick his moods, the session's usage figures for
+  the line, and the responses to Claude's own model requests, for the Fable limit. It never
+  changes a prompt, a tool call or its result, or a request to Claude or its response.
 - **What it reads:** whether a prompt has "thanks", "thank you" or "yay" in it (nothing else
   of what you or Claude write), each tool's name and whether it failed, the path a file tool used
   (and, after an edit, the file itself, to find the edited line), the context window's fill and
-  token counts per category, the usage limits' percentages, when each request goes out,
+  token counts per category, the usage limits' percentages, the rate-limit headers of Claude's
+  responses (for the Fable limit; nothing else of the response), when each request goes out,
   three settings, `CLAUDE_CODE_PROMPT_CACHE_TTL`, `ENABLE_PROMPT_CACHING_1H` and `FORCE_PROMPT_CACHING_5M`,
   `VISUAL` and `EDITOR` to pick your editor, and `OS` and `CLAWD_CLONE` for `/multiply`. No
   other tool input, and no tool output.

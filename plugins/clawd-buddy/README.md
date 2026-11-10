@@ -4,7 +4,7 @@
 > belong to Anthropic. This mod is not made, endorsed or supported by Anthropic.
 
 An animated Clawd above your Claude Code prompt, with a live dashboard under him:
-a context forecast, the prompt cache countdown, your 5-hour and weekly limits,
+a context forecast, the prompt cache countdown, your 5-hour, weekly and Fable limits,
 and a `/context` style breakdown. Runs in the terminal and the desktop app's Code
 tab. Needs Claude Code 2.1.289 or later.
 
@@ -21,7 +21,8 @@ tab. Needs Claude Code 2.1.289 or later.
 - **Clawd:** locks in while Claude works, chills when it goes quiet, celebrates a
   long turn and hops when you talk to him. 8 rides and 36 acts from claude.dev.
 - **The line under him:** context fill as weather, the cache countdown, and what
-  is left of your 5-hour and weekly limits.
+  is left of your 5-hour, weekly and Fable limits. The Fable limit shows after the
+  first reply from a Fable model in the session, and only on a subscription.
 - **Context view:** the window by category, growth per turn and headroom before
   auto-compaction.
 - **Sidebar:** `d` moves the lines into a pane beside the conversation.
@@ -52,8 +53,10 @@ view, `d` the sidebar, `m` twice compacts, `z` opens the file Claude changed las
 
 ## Privacy
 
-It reads session figures, tool names and file paths, never your prompts beyond
-spotting "thanks" or "yay", and sends nothing unless you press `count exactly`.
+It reads session figures, tool names and file paths, and the rate-limit headers
+of Claude's responses for the Fable limit, never your prompts beyond spotting
+"thanks" or "yay". It changes nothing in the requests to Claude or their responses,
+and sends nothing unless you press `count exactly`.
 The full list is in the repository README.
 
 ## More
