@@ -691,7 +691,9 @@ export const register: Register = (on, options) => {
     const isLens = isLined && lens.breakdown !== null
     const details = isLens && lens.isOpen ? lens.rows(columns, weather.growth()) : []
     // under Clawd: the weather, the context bar and its rows, the buttons
-    const under = 1 + (below ? 1 : 0) + (line ? 1 : 0) + (isLens ? 1 : 0) + details.length
+    // core's own drawing of the band is no row: a survey's, and a survey keeps the band
+    const isRowBelow = below != null && !(typeof below === 'object' && 'type' in below && below.type === 'engine')
+    const under = 1 + (isRowBelow ? 1 : 0) + (line ? 1 : 0) + (isLens ? 1 : 0) + details.length
     const room = Math.min(ROWS, e.props.maxRows - under)
     const rows = isHidden ? 0 : e.surface === 'desktop' ? ROWS : room < 4 ? 0 : room
     let strip = null
