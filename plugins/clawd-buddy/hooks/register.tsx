@@ -237,6 +237,9 @@ export const register: Register = (on, options) => {
   // the lines moved to a pane: asked for (kept across sessions), and on screen
   let isSidebar = false
   let isDocked = false
+  // other mods' rows in the band: from 2.1.323 core stacks each mod's own drawing
+  // in an AbovePromptList, and next(e) beneath Clawd is core's node alone
+  let othersRows = 0
   const files = new Files()
   // the editor files open in, as an argv to put `path:line` after; kept across sessions
   let editor: string[] = [...EDITOR]
@@ -671,6 +674,21 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  on('ui.render', { component: 'AbovePromptList' }, ($, e, next) => {
+    const rows: unknown = (e.props as { rows?: unknown }).rows
+    if (!Array.isArray(rows)) return next(e)
+    const others = rows.filter((r) => r?.plugin !== 'clawd-buddy')
+    if (others.length !== othersRows) {
+      othersRows = others.length
+      $.ui.invalidate('ui.render')
+    }
+    // other mods' rows go above Clawd, as they did when he drew them himself
+    const mine = rows.filter((r) => r?.plugin === 'clawd-buddy')
+    return others.length > 0 && mine.length > 0
+      ? next({ ...e, props: { ...e.props, rows: [...others, ...mine] } })
+      : next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if ((e.surface !== 'terminal' && e.surface !== 'desktop') || e.props.hasSurvey) {
       return next(e)
@@ -693,7 +711,7 @@ export const register: Register = (on, options) => {
     // under Clawd: the weather, the context bar and its rows, the buttons
     // core's own drawing of the band is no row: a survey's, and a survey keeps the band
     const isRowBelow = below != null && !(typeof below === 'object' && 'type' in below && below.type === 'engine')
-    const under = 1 + (isRowBelow ? 1 : 0) + (line ? 1 : 0) + (isLens ? 1 : 0) + details.length
+    const under = 1 + (isRowBelow ? 1 : othersRows) + (line ? 1 : 0) + (isLens ? 1 : 0) + details.length
     const room = Math.min(ROWS, e.props.maxRows - under)
     const rows = isHidden ? 0 : e.surface === 'desktop' ? ROWS : room < 4 ? 0 : room
     let strip = null

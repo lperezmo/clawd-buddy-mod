@@ -26,6 +26,7 @@ import { FABLE, limitsFromHeaders, limitsFromReply, until, Weather } from '../ho
 
 const PROPS = {
   hasSurvey: false,
+  isCollapsed: false,
   isWorking: false,
   maxRows: 20,
   bodyColumns: 60,
@@ -123,7 +124,9 @@ test('another mod row beneath shows above Clawd', async ($, on) => {
     props: { ...PROPS, maxRows: 18 },
   })
   // a key does not cross from another plugin's tree; its text does
-  expect(JSON.stringify(await ui.drawn())).toContain('another mod row')
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('another mod row')
+  expect(drawn.indexOf('another mod row')).toBeLessThan(drawn.indexOf('"clawd"'))
   expect((await ui.find({ key: 'clawd' }))?.props.rows).toBe(16)
 })
 
